@@ -1,0 +1,11 @@
+# Игнорируем всё
+*
+
+# Кроме workflow, zip-релиза, версии и readme
+!.gitignore
+!.github/
+!.github/workflows/
+!.github/workflows/release.yml
+!NozdorKeeper.zip
+!version.txt
+!README.md

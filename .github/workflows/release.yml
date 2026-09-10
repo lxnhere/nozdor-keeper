@@ -1,0 +1,85 @@
+name: Release
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Read version
+        id: version
+        run: |
+          VERSION=$(cat version.txt | tr -d '[:space:]')
+          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+          echo "TAG=v$VERSION" >> $GITHUB_OUTPUT
+          echo "Version: $VERSION"
+
+      - name: Delete existing release and tag if exists
+        run: |
+          TAG="v${{ steps.version.outputs.VERSION }}"
+          gh release delete "$TAG" --yes 2>/dev/null || true
+          git push origin ":refs/tags/$TAG" 2>/dev/null || true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.version.outputs.VERSION }}
+          name: "NozdorKeeper v${{ steps.version.outputs.VERSION }}"
+          body: |
+            ## NozdorKeeper v${{ steps.version.outputs.VERSION }}
+
+            ### Установка
+            Скачай `NozdorKeeper.zip`, распакуй и запусти `NozdorKeeper.exe`.
+
+            ### Обновление
+            Программа обновится автоматически при следующем запуске.
+          files: NozdorKeeper.zip
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Remove other releases
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const keep = "${{ steps.version.outputs.TAG }}";
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            let deleted = 0;
+            for (;;) {
+              const { data: releases } = await github.rest.repos.listReleases({
+                owner,
+                repo,
+                per_page: 100,
+                page: 1,
+              });
+              const victims = releases.filter((r) => r.tag_name !== keep);
+              if (victims.length === 0) break;
+              for (const r of victims) {
+                core.info(`Deleting release ${r.tag_name} (id ${r.id})`);
+                await github.rest.repos.deleteRelease({
+                  owner,
+                  repo,
+                  release_id: r.id,
+                });
+                deleted++;
+              }
+            }
+            core.notice(`Removed ${deleted} older release(s). Only ${keep} remains.`);
+
+      - name: Done
+        run: echo "Release v${{ steps.version.outputs.VERSION }} published."
